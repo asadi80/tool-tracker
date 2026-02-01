@@ -23,6 +23,7 @@ export default function UsersPage() {
     email: "",
     password: "",
     role: "user",
+    isActive: true,
   });
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,10 +35,13 @@ export default function UsersPage() {
   const [editingId, setEditingId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [userActive, setUserActive] = useState(false);
 
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  //---------------Getting All Users----------------------------------------
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -55,6 +59,8 @@ export default function UsersPage() {
       }
 
       const data = await res.json();
+      console.log(data);
+
       setUsers(data);
       setError(null);
     } catch (err) {
@@ -71,6 +77,8 @@ export default function UsersPage() {
     setTimeout(() => setRefreshing(false), 500);
   };
 
+  //---------------Create and Update User----------------------------------------
+
   const createOrUpdateUser = async () => {
     // Validation
     if (!form.name || !form.email) {
@@ -84,17 +92,17 @@ export default function UsersPage() {
     }
 
     // Email validation
-  const emailRegex = /^[^\s@]+@([a-zA-Z0-9-]+\.)?psk-inc\.com$/;
-if (!emailRegex.test(form.email)) {
-  alert("Please enter a valid email address from @psk-inc.com domain");
-  return;
-}
+    const emailRegex = /^[^\s@]+@([a-zA-Z0-9-]+\.)?psk-inc\.com$/;
+    if (!emailRegex.test(form.email)) {
+      alert("Please enter a valid email address from @psk-inc.com domain");
+      return;
+    }
 
     setSubmitting(true);
     try {
       const token = localStorage.getItem("token");
 
-      const url = editingId ? `/api/users/${editingId}` : "/api/users";
+      const url = editingId ? `/api/users?id=${editingId}` : "/api/users";
       const method = editingId ? "PATCH" : "POST";
 
       // Don't send empty password on update
@@ -103,6 +111,7 @@ if (!emailRegex.test(form.email)) {
         delete payload.password;
       }
 
+      console.log("editingIn", editingId);
       const res = await fetch(url, {
         method,
         headers: {
@@ -122,14 +131,20 @@ if (!emailRegex.test(form.email)) {
       // Update local state
       if (editingId) {
         setUsers((prev) =>
-          prev.map((u) => (u._id === editingId ? savedUser : u))
+          prev.map((u) => (u._id === editingId ? savedUser : u)),
         );
       } else {
         setUsers((prev) => [savedUser, ...prev]);
       }
 
       // Reset form
-      setForm({ name: "", email: "", password: "", role: "user" });
+      setForm({
+        name: "",
+        email: "",
+        password: "",
+        role: "user",
+        isActive: true,
+      });
       setShowForm(false);
       setEditingId(null);
       setShowPassword(false);
@@ -140,10 +155,11 @@ if (!emailRegex.test(form.email)) {
       setSubmitting(false);
     }
   };
+//---------------Delete User----------------------------------------
 
   const deleteUser = async (id) => {
-    console.log("id",id);
-    
+    console.log("id", id);
+
     if (!confirm("Are you sure you want to delete this user?")) {
       return;
     }
@@ -156,7 +172,6 @@ if (!emailRegex.test(form.email)) {
           Authorization: `Bearer ${token}`,
         },
       });
-       console.log(res);
 
       if (!res.ok) {
         throw new Error("Failed to delete user");
@@ -166,6 +181,37 @@ if (!emailRegex.test(form.email)) {
     } catch (err) {
       console.error("Error deleting user:", err);
       alert("Failed to delete user");
+    }
+  };
+
+//---------------Activate and Deactivate User----------------------------------------
+  const deactivateUser = async (id, isActive) => {
+    console.log("id", id);
+    const action = isActive ? "activate" : "deactivate";
+
+    if (!confirm(`Are you sure you want to ${action} this user?`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/users?id=${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: isActive }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to dactivate user");
+      }
+      handleRefresh();
+      // setUsers((prev) => prev.filter((u) => u._id !== id));
+    } catch (err) {
+      console.error("Error deactivate user:", err);
+      alert("Failed to deactivate user");
     }
   };
 
@@ -395,8 +441,8 @@ if (!emailRegex.test(form.email)) {
                 {submitting
                   ? "Saving..."
                   : editingId
-                  ? "Update User"
-                  : "Create User"}
+                    ? "Update User"
+                    : "Create User"}
               </span>
             </button>
             <button
@@ -515,6 +561,23 @@ if (!emailRegex.test(form.email)) {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() =>
+                            deactivateUser(user._id, !user.isActive)
+                          }
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          title="Deactivate"
+                        >
+                          {user.isActive ? (
+                            <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
+                              Inactive
+                            </span>
+                          )}
+                        </button>
+                        <button
                           onClick={() => deleteUser(user._id)}
                           className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
                           title="Delete"
@@ -532,8 +595,9 @@ if (!emailRegex.test(form.email)) {
           {/* Footer */}
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <p className="text-sm text-gray-600">
-              Showing <span className="font-medium">{filteredUsers.length}</span>{" "}
-              of <span className="font-medium">{users.length}</span> users
+              Showing{" "}
+              <span className="font-medium">{filteredUsers.length}</span> of{" "}
+              <span className="font-medium">{users.length}</span> users
             </p>
           </div>
         </div>

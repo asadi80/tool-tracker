@@ -75,19 +75,26 @@ export async function DELETE(req) {
   }
 }
 
-//--------------------------PATCH--------------------------------
+//--------------------------PATCH-------------------------------
 
+// Change from PUT to PATCH
 export async function PATCH(req) {
   await connectDB();
-  
+
   const auth = verifyToken(req);
   if (auth.role !== "admin")
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const body = await req.json();
-    const { id, isActive, password, ...updateData } = body;
+    // Get ID from query parameters (not pathname)
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
     
+    console.log("Updating user with ID:", id);
+    
+    const body = await req.json();
+    const { isActive, password, ...updateData } = body;
+
     if (!id) {
       return Response.json({ error: "User ID is required" }, { status: 400 });
     }
@@ -100,29 +107,86 @@ export async function PATCH(req) {
 
     // Prepare update object
     const updates = { ...updateData };
-    
+
     // If admin is resetting password
     if (password) {
       const hashed = await bcrypt.hash(password, 10);
       updates.password = hashed;
       updates.passwordChanged = false; // User needs to change it on next login
     }
-    
+
     // If admin is changing active status
     if (isActive !== undefined) {
       updates.isActive = isActive;
     }
 
     // Update the user
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
-      updates,
-      { new: true, runValidators: true }
-    ).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
 
     return Response.json(updatedUser);
   } catch (error) {
     console.error("Update user error:", error);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+
+//--------------------------PUT-------------------------------
+export async function PUT(req) {
+  await connectDB();
+
+  const auth = verifyToken(req);
+  if (!auth || auth.role !== "admin") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    const url = new URL(req.url);
+    const pathParts = url.pathname.split("/");
+    let id = pathParts[pathParts.length - 1];
+
+    if (!id || id === "users" || id.length !== 24) {
+      id = url.searchParams.get("id");
+    }
+
+    if (!id) {
+      return Response.json({ error: "User ID is required" }, { status: 400 });
+    }
+
+    // 🔑 read desired state from body
+    const body = await req.json();
+    const { isActive } = body;
+
+    if (typeof isActive !== "boolean") {
+      return Response.json(
+        { error: "isActive must be true or false" },
+        { status: 400 }
+      );
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { isActive },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return Response.json({ error: "User not found" }, { status: 404 });
+    }
+
+    return Response.json({
+      message: `User ${isActive ? "activated" : "deactivated"} successfully`,
+      user: {
+        id: updatedUser._id,
+        email: updatedUser.email,
+        isActive: updatedUser.isActive,
+      },
+    });
+  } catch (error) {
+    console.error("Update user active state error:", error);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }

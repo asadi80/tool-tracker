@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Users, Wrench, FileText, Plus, BarChart3, Settings } from "lucide-react";
+import { Users, Wrench, X, FileText, Plus, BarChart3, Settings } from "lucide-react";
 
 export default function AdminPage() {
   return (
